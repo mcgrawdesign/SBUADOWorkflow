@@ -1,22 +1,33 @@
 import { motion } from "framer-motion";
 import { CAPACITY_DAYS_BUDGET, TIMELINES, type RequestWithScore, type Timeline } from "@/lib/domain";
 
-const SEGMENT_STATUSES = ["in_review", "approved", "handed_off"] as const;
+const SEGMENT_STATUSES = ["pending", "in_review", "approved"] as const;
 type SegStatus = (typeof SEGMENT_STATUSES)[number];
 
 const SEG_LABEL: Record<SegStatus, string> = {
+  pending: "Pending",
   in_review: "In review",
   approved: "Approved",
-  handed_off: "Handed off",
 };
 
 const SEG_COLOR: Record<SegStatus, string> = {
+  pending: "hsl(var(--council-text-dim) / 0.35)",
   in_review: "hsl(var(--council-text-dim))",
-  approved: "hsl(var(--council-gold) / 0.55)",
-  handed_off: "hsl(var(--council-gold))",
+  approved: "hsl(var(--council-gold))",
 };
 
-const PER_TIMELINE_BUDGET = Math.round(CAPACITY_DAYS_BUDGET / TIMELINES.length);
+const BACKLOG: Timeline = "Backlog";
+// Backlog has no cap; the remaining budget is split evenly across the other timelines.
+const NON_BACKLOG_TIMELINES = TIMELINES.filter((t) => t !== BACKLOG);
+const PER_TIMELINE_BUDGET = Math.round(CAPACITY_DAYS_BUDGET / NON_BACKLOG_TIMELINES.length);
+
+function bucketFor(status: string): SegStatus | null {
+  if (status === "submitted" || status === "scored") return "pending";
+  if (status === "in_review") return "in_review";
+  if (status === "approved") return "approved";
+  // handed_off and deferred are excluded — the widget reflects the open queue only.
+  return null;
+}
 
 export function CouncilCapacity({
   data,
@@ -25,17 +36,19 @@ export function CouncilCapacity({
   data: RequestWithScore[] | undefined;
   pulseKey?: string | number;
 }) {
-  // Build per-timeline + per-status totals
+  // Build per-timeline + per-status totals. Every non-deferred request counts toward
+  // its timeline's bar, segmented by the bucketed status.
   const totals: Record<Timeline, Record<SegStatus, number>> = TIMELINES.reduce((acc, t) => {
-    acc[t] = { in_review: 0, approved: 0, handed_off: 0 };
+    acc[t] = { pending: 0, in_review: 0, approved: 0 };
     return acc;
   }, {} as Record<Timeline, Record<SegStatus, number>>);
 
   (data ?? []).forEach((r) => {
-    if (!SEGMENT_STATUSES.includes(r.status as SegStatus)) return;
+    const seg = bucketFor(r.status);
+    if (!seg) return;
     const t = r.target_timeline as Timeline;
     if (!totals[t]) return;
-    totals[t][r.status as SegStatus] += r.estimated_days ?? 0;
+    totals[t][seg] += r.estimated_days ?? 0;
   });
 
   return (
@@ -46,11 +59,11 @@ export function CouncilCapacity({
       transition={{ duration: 0.8 }}
       className="mb-4 rounded-sm border border-[hsl(var(--council-line))] bg-[hsl(var(--council-surface))] p-4"
     >
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-[11px] uppercase tracking-[0.25em] text-[hsl(var(--council-text-dim))]">
           Capacity by timeline
         </div>
-        <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-[hsl(var(--council-text-dim))]">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wider text-[hsl(var(--council-text-dim))]">
           {SEGMENT_STATUSES.map((s) => (
             <span key={s} className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-sm" style={{ background: SEG_COLOR[s] }} />
@@ -62,17 +75,31 @@ export function CouncilCapacity({
       <div className="space-y-2">
         {TIMELINES.map((t) => {
           const row = totals[t];
-          const used = row.in_review + row.approved + row.handed_off;
-          const over = used > PER_TIMELINE_BUDGET;
-          // Scale denominator: when over budget, normalize segments to fill (and visually overflow) the bar proportionally
-          const denom = Math.max(PER_TIMELINE_BUDGET, used) || 1;
+          const used = row.pending + row.in_review + row.approved;
+          const isBacklog = t === BACKLOG;
+          const budget = isBacklog ? null : PER_TIMELINE_BUDGET;
+          const over = !isBacklog && used > PER_TIMELINE_BUDGET;
+          // Width denominator: Backlog (or over-capacity rows) normalize to actual usage so the bar fills.
+          const denom = (isBacklog ? used : Math.max(PER_TIMELINE_BUDGET, used)) || 1;
           const pct = (n: number) => (n / denom) * 100;
           return (
-            <div key={t} className="grid grid-cols-[140px_1fr_72px] items-center gap-3">
-              <div className="text-[11px] text-[hsl(var(--council-text-dim))] truncate" title={t}>{t}</div>
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-[hsl(var(--council-line))]" role="progressbar" aria-valuenow={Math.min(used, PER_TIMELINE_BUDGET)} aria-valuemin={0} aria-valuemax={PER_TIMELINE_BUDGET} aria-label={`${t} capacity`}>
+            <div key={t} className="grid grid-cols-[160px_1fr_80px] items-center gap-3">
+              <div
+                className="text-[11px] leading-tight text-[hsl(var(--council-text-dim))] whitespace-normal break-words"
+                title={t}
+              >
+                {t}
+              </div>
+              <div
+                className="relative h-2 w-full overflow-hidden rounded-full bg-[hsl(var(--council-line))]"
+                role="progressbar"
+                aria-valuenow={isBacklog ? used : Math.min(used, PER_TIMELINE_BUDGET)}
+                aria-valuemin={0}
+                aria-valuemax={isBacklog ? Math.max(used, 1) : PER_TIMELINE_BUDGET}
+                aria-label={`${t} capacity`}
+              >
                 {/* stacked segments */}
-                <div className="absolute inset-y-0 left-0 flex">
+                <div className="absolute inset-0 flex">
                   {SEGMENT_STATUSES.map((s) => (
                     <div
                       key={s}
@@ -84,7 +111,10 @@ export function CouncilCapacity({
                 </div>
               </div>
               <div className={`text-right text-[11px] tabular-nums ${over ? "text-[hsl(var(--destructive))]" : "text-[hsl(var(--council-text-dim))]"}`}>
-                {used}d <span className="text-[hsl(var(--council-text-dim))]/60">/ {PER_TIMELINE_BUDGET}d</span>
+                {used}d
+                {budget != null && (
+                  <span className="text-[hsl(var(--council-text-dim))]/60"> / {budget}d</span>
+                )}
               </div>
             </div>
           );

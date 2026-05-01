@@ -11,11 +11,12 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ResetButton } from "@/components/ResetButton";
 import { ReportButton } from "@/components/ReportButton";
 import { ImportDialog } from "@/components/ImportDialog";
-import { CAPACITY_DAYS_BUDGET, CLASSIFICATIONS, SBUS, STATUS_LABEL, TIMELINES, WORK_ITEM_TYPES, rankingValue, type Classification, type RequestWithScore, type SBU, type Timeline, type WorkItemType } from "@/lib/domain";
+import { CAPACITY_DAYS_BUDGET, CLASSIFICATIONS, NEXT_TIMELINE, SBUS, STATUS_LABEL, TIMELINES, WORK_ITEM_TYPES, compareTimelines, rankingValue, type Classification, type RequestWithScore, type SBU, type Timeline, type WorkItemType } from "@/lib/domain";
 import { useSubmitForm } from "@/components/useSubmitForm";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CouncilCapacity } from "@/components/CouncilCapacity";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 
 const SBU_CSS: Record<SBU, string> = {
   MSS: "var(--sbu-mss)",
@@ -151,6 +152,8 @@ function CouncilReview() {
   const [explaining, setExplaining] = useState(false);
   const [filterSbus, setFilterSbus] = useState<Set<SBU>>(new Set());
   const [filterConf, setFilterConf] = useState<Set<Confidence>>(new Set());
+  const [filterTimelines, setFilterTimelines] = useState<Set<Timeline>>(new Set());
+  const [sortMode, setSortMode] = useState<"score" | "timeline">("score");
   const [editMode, setEditMode] = useState(false);
   const [draft, setDraft] = useState<{
     title: string; sbu: SBU; work_item_type: WorkItemType; classification: Classification;
@@ -158,18 +161,65 @@ function CouncilReview() {
     estimated_days: number | null;
   } | null>(null);
 
-  const baseRanked = useMemo(() => {
-    const f = (data ?? []).filter((r) => r.status === "scored" || r.status === "submitted" || r.status === "in_review");
-    return [...f].sort((a, b) => rankingValue(b) - rankingValue(a));
+  // Items eligible for the queue (pre-sort/filter). Includes pending + decided items
+  // that the reviewer can still re-rank or revisit; deferred & handed-off items are excluded.
+  const eligible = useMemo(() => {
+    return (data ?? []).filter(
+      (r) => r.status === "scored" || r.status === "submitted" || r.status === "in_review" || r.status === "approved"
+    );
   }, [data]);
 
+  // baseRanked: full unfiltered list. We sort by score (or timeline), then *demote*
+  // items that are already approved for a future timeline (target_timeline !== NEXT_TIMELINE)
+  // to immediately after the days-budget cut line.
+  const baseRanked = useMemo(() => {
+    const sorted = [...eligible].sort((a, b) => {
+      if (sortMode === "timeline") {
+        const t = compareTimelines(a.target_timeline, b.target_timeline);
+        if (t !== 0) return t;
+      }
+      return rankingValue(b) - rankingValue(a);
+    });
+
+    // Compute days-budget cut line on the un-demoted list.
+    // Handed-off items consume days first (they're not in `eligible`).
+    const handedOffDays = (data ?? [])
+      .filter((r) => r.status === "handed_off")
+      .reduce((sum, r) => sum + (r.estimated_days ?? 0), 0);
+
+    // Walk sorted, separating "demote" candidates from the rest as we go.
+    // A demote candidate is approved (future-timeline) — these don't consume budget
+    // for cut-line purposes (they're already approved), but they sit below the cut.
+    const isDemoted = (r: RequestWithScore) =>
+      r.status === "approved" && r.target_timeline !== NEXT_TIMELINE;
+
+    const above: RequestWithScore[] = [];
+    const demoted: RequestWithScore[] = [];
+    const below: RequestWithScore[] = [];
+    let acc = handedOffDays;
+    let cutClosed = false;
+    for (const r of sorted) {
+      if (isDemoted(r)) { demoted.push(r); continue; }
+      const d = r.estimated_days ?? 0;
+      if (!cutClosed && acc + d <= CAPACITY_DAYS_BUDGET) {
+        acc += d;
+        above.push(r);
+      } else {
+        cutClosed = true;
+        below.push(r);
+      }
+    }
+    return { ordered: [...above, ...demoted, ...below], aboveCount: above.length };
+  }, [eligible, sortMode, data]);
+
   const ranked = useMemo(() => {
-    return baseRanked.filter((r) => {
+    return baseRanked.ordered.filter((r) => {
       if (filterSbus.size > 0 && !filterSbus.has(r.sbu)) return false;
       if (filterConf.size > 0 && (!r.score || !filterConf.has(r.score.confidence))) return false;
+      if (filterTimelines.size > 0 && !filterTimelines.has(r.target_timeline)) return false;
       return true;
     });
-  }, [baseRanked, filterSbus, filterConf]);
+  }, [baseRanked, filterSbus, filterConf, filterTimelines]);
 
   const current = ranked[idx];
   const next = ranked[idx + 1];
@@ -263,12 +313,18 @@ function CouncilReview() {
     setFilterConf(n);
     setIdx(0);
   };
+  const toggleTimeline = (t: Timeline) => {
+    const n = new Set(filterTimelines);
+    n.has(t) ? n.delete(t) : n.add(t);
+    setFilterTimelines(n);
+    setIdx(0);
+  };
 
   if (isLoading) return <div className="text-center text-[hsl(var(--council-text-dim))]">Convening the chamber…</div>;
   if (!current) return <div className="council-paper mx-auto max-w-md p-12 text-center"><div className="council-display text-2xl">Chamber is clear.</div><p className="mt-2 text-sm text-[hsl(var(--council-ink))]/60">All petitions reviewed.</p></div>;
 
-  // Map each request id to its overall rank index in baseRanked.
-  const overallIdxById = new Map(baseRanked.map((r, i) => [r.id, i]));
+  // Map each request id to its index in the demoted/ordered base list.
+  const overallIdxById = new Map(baseRanked.ordered.map((r, i) => [r.id, i]));
 
   // Days-based capacity: sum of estimated_days for items currently committed.
   const capacityUsed = (data ?? [])
@@ -278,28 +334,13 @@ function CouncilReview() {
   const capacityWarn = capacityPct > 80;
   const handedOffCount = (data ?? []).filter((r) => r.status === "handed_off").length;
 
-  // Days-based cut line, anchored to overall ranking.
-  // Items already handed off consume days first, then walk baseRanked accumulating days.
-  const handedOffDays = (data ?? [])
-    .filter((r) => r.status === "handed_off")
-    .reduce((sum, r) => sum + (r.estimated_days ?? 0), 0);
-  let cutOverallIdx = -1;
-  {
-    let acc = handedOffDays;
-    for (let i = 0; i < baseRanked.length; i++) {
-      const d = baseRanked[i].estimated_days ?? 0;
-      if (acc + d <= CAPACITY_DAYS_BUDGET) {
-        acc += d;
-        cutOverallIdx = i;
-      } else {
-        break;
-      }
-    }
-  }
+  // Cut line is the boundary between the `above` section and the demoted/below section
+  // already encoded in baseRanked.ordered. cutOverallIdx is the LAST index above the cut.
+  const cutOverallIdx = baseRanked.aboveCount - 1;
 
   const currentOverallIdx = overallIdxById.get(current.id) ?? 0;
   const isAboveCutLine = currentOverallIdx <= cutOverallIdx;
-  const filtersActive = filterSbus.size > 0 || filterConf.size > 0;
+  const filtersActive = filterSbus.size > 0 || filterConf.size > 0 || filterTimelines.size > 0;
 
   // Decide where to draw the cut-line marker among the filtered rows.
   // It sits before the first filtered row whose overall index is > cutOverallIdx.
@@ -319,7 +360,7 @@ function CouncilReview() {
       <aside className="col-span-12 lg:col-span-5">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-[11px] uppercase tracking-[0.2em] text-[hsl(var(--council-text-dim))]">
-            Queue · {ranked.length}{filtersActive && ` of ${baseRanked.length}`}
+            Queue · {ranked.length}{filtersActive && ` of ${baseRanked.ordered.length}`}
           </div>
           <button
             onClick={() => resetRank.mutate()}
@@ -352,22 +393,92 @@ function CouncilReview() {
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(["high", "medium", "low"] as Confidence[]).map((c) => (
-              <button
-                key={c}
-                onClick={() => toggleConf(c)}
-                className={`rounded-sm px-3 py-1.5 text-[12px] uppercase tracking-wider transition-colors ${
-                  filterConf.has(c)
-                    ? "bg-[hsl(var(--council-gold))]/25 text-[hsl(var(--council-gold))]"
-                    : "border border-[hsl(var(--council-line))] text-[hsl(var(--council-text-dim))] hover:text-[hsl(var(--council-text))]"
-                }`}
-              >{c}</button>
-            ))}
+          <div className="flex flex-wrap gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-[hsl(var(--council-line))] bg-transparent px-3 py-1.5 text-[11px] uppercase tracking-wider text-[hsl(var(--council-text))] hover:bg-white/5"
+                >
+                  Confidence:{" "}
+                  <span className="text-[hsl(var(--council-gold))]">
+                    {filterConf.size === 0
+                      ? "All"
+                      : Array.from(filterConf).join(", ")}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[160px]">
+                {(["high", "medium", "low"] as Confidence[]).map((c) => (
+                  <DropdownMenuCheckboxItem
+                    key={c}
+                    checked={filterConf.has(c)}
+                    onCheckedChange={() => toggleConf(c)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-xs uppercase tracking-wider"
+                  >
+                    {c}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-[hsl(var(--council-line))] bg-transparent px-3 py-1.5 text-[11px] uppercase tracking-wider text-[hsl(var(--council-text))] hover:bg-white/5"
+                >
+                  Timeline:{" "}
+                  <span className="text-[hsl(var(--council-gold))]">
+                    {filterTimelines.size === 0
+                      ? "All"
+                      : Array.from(filterTimelines)
+                          .map((t) =>
+                            t === "Backlog"
+                              ? "Backlog"
+                              : t.replace("FY27 Semester 1 — ", "S1 ").replace("FY27 Semester 2", "Sem 2"),
+                          )
+                          .join(", ")}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[260px]">
+                {TIMELINES.map((t) => (
+                  <DropdownMenuCheckboxItem
+                    key={t}
+                    checked={filterTimelines.has(t)}
+                    onCheckedChange={() => toggleTimeline(t)}
+                    onSelect={(e) => e.preventDefault()}
+                    className="text-xs"
+                  >
+                    {t}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          {filtersActive && (
-            <button onClick={() => { setFilterSbus(new Set()); setFilterConf(new Set()); }} className="text-[10px] text-[hsl(var(--council-text-dim))] hover:text-[hsl(var(--council-text))]">clear filters</button>
-          )}
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-[hsl(var(--council-text-dim))]">
+              <span>Sort:</span>
+              {(["score", "timeline"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => { setSortMode(m); setIdx(0); }}
+                  className={`rounded-sm px-2 py-1 ${
+                    sortMode === m
+                      ? "bg-[hsl(var(--council-gold))]/25 text-[hsl(var(--council-gold))]"
+                      : "text-[hsl(var(--council-text-dim))] hover:text-[hsl(var(--council-text))]"
+                  }`}
+                >{m}</button>
+              ))}
+            </div>
+            {filtersActive && (
+              <button onClick={() => { setFilterSbus(new Set()); setFilterConf(new Set()); setFilterTimelines(new Set()); }} className="text-[10px] text-[hsl(var(--council-text-dim))] hover:text-[hsl(var(--council-text))]">clear filters</button>
+            )}
+          </div>
         </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -603,7 +714,18 @@ function QueueItem({ item, index, overallIdx, showOverall, active, cutLine, onSe
           </span>
           <span className="flex-1 min-w-0">
             <span className={`block line-clamp-2 break-words ${active ? "text-[hsl(var(--council-gold))]" : "text-[hsl(var(--council-text-dim))]"}`}>{item.title}</span>
-            <span className="mt-0.5 block text-[9px] uppercase tracking-wider text-[hsl(var(--council-text-dim))]/70 truncate">{item.sbu} · {item.target_timeline}</span>
+            <span className="mt-0.5 flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-[hsl(var(--council-text-dim))]/70">
+              {(item.status === "submitted" || item.status === "scored") && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--council-gold))]/50 px-1 py-px text-[8px] text-[hsl(var(--council-gold))]"
+                  title="No decision yet"
+                >
+                  <span className="h-1 w-1 rounded-full bg-[hsl(var(--council-gold))]" />
+                  pending
+                </span>
+              )}
+              <span className="truncate">{item.sbu} · {item.target_timeline}</span>
+            </span>
           </span>
           <span className="font-mono text-[10px] text-[hsl(var(--council-text-dim))]/70 shrink-0 tabular-nums" title="Estimated effort">
             {item.estimated_days != null ? `${item.estimated_days}d` : "—"}

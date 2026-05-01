@@ -24,6 +24,17 @@ export const TIMELINES = [
 ] as const;
 export type Timeline = (typeof TIMELINES)[number];
 
+// Canonical chronological order. Always use this for sorting/grouping by timeline.
+export const TIMELINE_INDEX: Record<Timeline, number> = TIMELINES.reduce((acc, t, i) => {
+  acc[t] = i;
+  return acc;
+}, {} as Record<Timeline, number>);
+export function compareTimelines(a: Timeline, b: Timeline): number {
+  return TIMELINE_INDEX[a] - TIMELINE_INDEX[b];
+}
+// The "current" timeline period — items approved for any later timeline drop below the cut line.
+export const NEXT_TIMELINE: Timeline = "FY27 Semester 1 — Sprint 1";
+
 export const STATUSES = [
   "submitted",
   "scored",

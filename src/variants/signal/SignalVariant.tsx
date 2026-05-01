@@ -286,11 +286,17 @@ function SignalReview() {
           })}
         </div>
         <div className="grid grid-cols-4 gap-2 min-h-[60vh]">
-          {STAGES.map((stage) => (
+          {STAGES.map((stage) => {
+            const items = grouped[stage.key];
+            const effortTotal = items.reduce((sum, r) => sum + (r.estimated_days ?? 0), 0);
+            return (
             <div key={stage.key} className="signal-surface rounded p-2 flex flex-col">
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="signal-mono text-[hsl(var(--signal-text-dim))]">{stage.label}</span>
-                <span className="signal-mono text-[hsl(var(--signal-accent))]">{grouped[stage.key].length}</span>
+                <span className="signal-mono">
+                  <span className="text-[hsl(var(--signal-accent))]">{items.length}</span>
+                  <span className="text-[hsl(var(--signal-text-dim))]/70 tabular-nums"> · {effortTotal}d</span>
+                </span>
               </div>
               <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[65vh] pr-0.5">
                 {isLoading && <div className="text-xs text-[hsl(var(--signal-text-dim))]">…</div>}
@@ -325,7 +331,8 @@ function SignalReview() {
                 {grouped[stage.key].length === 0 && <div className="signal-mono text-center text-[hsl(var(--signal-text-dim))]/60 py-4">empty</div>}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -411,7 +418,7 @@ function SignalReview() {
             <div className="mt-4 grid grid-cols-2 gap-1.5">
               <button onClick={() => advance(selected, -1)} className="rounded border border-[hsl(var(--signal-border))] py-1.5 signal-mono text-[hsl(var(--signal-text-dim))] hover:text-[hsl(var(--signal-text))]">← back</button>
               <button onClick={() => advance(selected, 1)} className="rounded bg-[hsl(var(--signal-accent))] py-1.5 signal-mono font-bold text-black">{selected.status === "in_review" ? "approve →" : "advance →"}</button>
-              {selected.status !== "deferred" && selected.status !== "handed_off" && selected.status !== "approved" && (
+              {selected.status !== "deferred" && selected.status !== "approved" && (
                 <button
                   onClick={async () => {
                     await update.mutateAsync({ id: selected.id, status: "deferred" });
@@ -438,8 +445,8 @@ function SignalReview() {
                   <SEditField label="requested_by"><input className="signal-input" value={draft.requested_by} onChange={(e) => setDraft({ ...draft, requested_by: e.target.value })} /></SEditField>
                   <SEditField label="effort (days)"><input type="number" min={1} max={365} className="signal-input" value={draft.estimated_days ?? ""} onChange={(e) => setDraft({ ...draft, estimated_days: e.target.value === "" ? null : Number(e.target.value) })} /></SEditField>
                 </div>
-                <SEditField label="description"><textarea className="signal-input min-h-[60px]" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></SEditField>
-                <SEditField label="justification"><textarea className="signal-input min-h-[80px]" value={draft.justification} onChange={(e) => setDraft({ ...draft, justification: e.target.value })} /></SEditField>
+                <SEditField label="description"><textarea className="signal-input min-h-[140px]" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></SEditField>
+                <SEditField label="justification"><textarea className="signal-input min-h-[180px]" value={draft.justification} onChange={(e) => setDraft({ ...draft, justification: e.target.value })} /></SEditField>
                 <div className="mt-3 grid grid-cols-2 gap-1.5">
                   <button
                     onClick={() => {
