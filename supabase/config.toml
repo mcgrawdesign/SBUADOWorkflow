@@ -1,0 +1,13 @@
+project_id = "idddveftmjtjvkzyjccd"
+
+[functions.score-request]
+verify_jwt = false
+
+[functions.coach-justification]
+verify_jwt = false
+
+[functions.explain-ranking]
+verify_jwt = false
+
+[functions.seed-backlog]
+verify_jwt = false

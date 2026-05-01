@@ -1,0 +1,315 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   BASE TOKENS — shared primitives across all variants.
+   Variants extend via [data-variant="..."] selectors below.
+   All colors HSL.
+   ============================================================ */
+
+@layer base {
+  :root {
+    --background: 220 18% 97%;
+    --foreground: 222 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+
+    --primary: 222 30% 12%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 222 30% 12%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 42%;
+
+    --accent: 220 14% 94%;
+    --accent-foreground: 222 30% 12%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 222 30% 12%;
+
+    --radius: 0.5rem;
+
+    /* SBU palette — used by Signal */
+    --sbu-mss: 199 89% 48%;
+    --sbu-scim: 270 70% 60%;
+    --sbu-ai: 152 65% 42%;
+    --sbu-tpc: 28 92% 55%;
+
+    /* Status palette */
+    --status-submitted: 220 10% 55%;
+    --status-scored: 199 89% 48%;
+    --status-review: 270 70% 60%;
+    --status-approved: 152 65% 42%;
+    --status-handed: 222 30% 12%;
+    --status-deferred: 0 65% 55%;
+  }
+
+  /* ============= SIGNAL — operational ops-console ============= */
+  [data-variant="signal"] {
+    --signal-bg: 222 30% 8%;
+    --signal-surface: 222 28% 12%;
+    --signal-surface-2: 222 24% 16%;
+    --signal-border: 222 20% 28%;
+    --signal-text: 220 15% 95%;
+    --signal-text-dim: 220 15% 78%;
+    --signal-accent: 173 80% 55%;
+    --signal-warn: 38 92% 65%;
+    --signal-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+
+  /* ============= COUNCIL — premium decision-room ============= */
+  [data-variant="council"] {
+    --council-bg: 25 20% 6%;
+    --council-surface: 25 18% 10%;
+    --council-paper: 35 25% 95%;
+    --council-ink: 25 30% 8%;
+    --council-line: 25 15% 22%;
+    --council-gold: 38 60% 60%;
+    --council-text: 35 25% 95%;
+    --council-text-dim: 35 18% 78%;
+    --council-display: "Fraunces", "Playfair Display", Georgia, serif;
+  }
+
+  /* ============= ATLAS — calm enterprise ============= */
+  [data-variant="atlas"] {
+    --atlas-bg: 0 0% 100%;
+    --atlas-paper: 220 20% 98%;
+    --atlas-ink: 222 28% 14%;
+    --atlas-ink-dim: 220 13% 35%;
+    --atlas-line: 220 15% 90%;
+    --atlas-accent: 222 60% 45%;
+    --atlas-success: 152 50% 38%;
+    --atlas-warn: 35 85% 50%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  /* Global focus-visible ring for accessibility (WCAG 2.4.7) */
+  button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [role="tab"]:focus-visible,
+  input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  [data-variant="signal"] *:focus-visible { outline-color: hsl(var(--signal-accent)); }
+  [data-variant="council"] *:focus-visible { outline-color: hsl(var(--council-gold)); }
+  [data-variant="atlas"] *:focus-visible { outline-color: hsl(var(--atlas-accent)); }
+}
+
+@layer utilities {
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* ============================================================
+   VARIANT-SCOPED PAGE STYLES
+   ============================================================ */
+
+/* SIGNAL */
+[data-variant="signal"] .signal-root {
+  background: hsl(var(--signal-bg));
+  color: hsl(var(--signal-text));
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  min-height: 100vh;
+}
+[data-variant="signal"] .signal-mono { font-family: var(--signal-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+[data-variant="signal"] .signal-surface { background: hsl(var(--signal-surface)); border: 1px solid hsl(var(--signal-border)); }
+[data-variant="signal"] .signal-surface-2 { background: hsl(var(--signal-surface-2)); border: 1px solid hsl(var(--signal-border)); }
+[data-variant="signal"] .signal-pulse::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+  background: hsl(var(--signal-accent)); margin-right: 6px;
+  animation: signal-pulse 1.6s ease-in-out infinite;
+}
+@keyframes signal-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 hsl(var(--signal-accent) / 0.6); }
+  50% { opacity: 0.4; box-shadow: 0 0 0 6px hsl(var(--signal-accent) / 0); }
+}
+
+/* COUNCIL */
+[data-variant="council"] .council-root {
+  background:
+    radial-gradient(ellipse at top, hsl(25 25% 14%) 0%, hsl(var(--council-bg)) 60%);
+  color: hsl(var(--council-text));
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+}
+[data-variant="council"] .council-display {
+  font-family: var(--council-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+[data-variant="council"] .council-paper {
+  background: hsl(var(--council-paper));
+  color: hsl(var(--council-ink));
+  border-radius: 4px;
+  box-shadow: 0 30px 80px -20px hsl(0 0% 0% / 0.6), 0 8px 24px -8px hsl(0 0% 0% / 0.4);
+}
+[data-variant="council"] .council-rule {
+  height: 1px;
+  background: linear-gradient(to right, transparent, hsl(var(--council-gold) / 0.5), transparent);
+}
+
+/* ATLAS */
+[data-variant="atlas"] .atlas-root {
+  background: hsl(var(--atlas-bg));
+  color: hsl(var(--atlas-ink));
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+}
+[data-variant="atlas"] .atlas-paper { background: hsl(var(--atlas-paper)); }
+[data-variant="atlas"] .atlas-row:hover { background: hsl(var(--atlas-paper)); }
+[data-variant="atlas"] .atlas-divider { border-color: hsl(var(--atlas-line)); }
+
+/* Variant switcher meta-band */
+.meta-band {
+  background: hsl(0 0% 4%);
+  color: hsl(0 0% 95%);
+  border-bottom: 1px solid hsl(0 0% 12%);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Atlas input primitive */
+[data-variant="atlas"] .atlas-input,
+.atlas-input {
+  width: 100%;
+  border: 1px solid hsl(var(--atlas-line));
+  background: white;
+  color: hsl(var(--atlas-ink));
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 120ms;
+}
+.atlas-input:focus { border-color: hsl(var(--atlas-accent)); }
+
+/* Council inputs */
+[data-variant="council"] .council-input {
+  width: 100%;
+  background: hsl(var(--council-paper));
+  color: hsl(var(--council-ink));
+  border: 1px solid hsl(var(--council-paper));
+  border-bottom: 1px solid hsl(var(--council-ink) / 0.3);
+  border-radius: 0;
+  padding: 10px 2px;
+  font-size: 15px;
+  outline: none;
+}
+[data-variant="council"] .council-input:focus { border-bottom-color: hsl(var(--council-gold)); }
+
+/* Signal inputs */
+[data-variant="signal"] .signal-input {
+  width: 100%;
+  background: hsl(var(--signal-surface-2));
+  color: hsl(var(--signal-text));
+  border: 1px solid hsl(var(--signal-border));
+  border-radius: 4px;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  font-family: var(--signal-mono);
+  outline: none;
+}
+[data-variant="signal"] .signal-input:focus { border-color: hsl(var(--signal-accent)); }
+
+/* ============================================================
+   THEME OVERRIDES — namespaced per variant + theme.
+   Default themes (signal=dark, council=dark, atlas=light)
+   already match the base blocks above. Below we add the
+   alternate theme for each variant.
+   ============================================================ */
+
+/* SIGNAL — light "daylight ops" mode */
+[data-variant="signal"][data-theme="light"] {
+  --signal-bg: 220 25% 96%;
+  --signal-surface: 0 0% 100%;
+  --signal-surface-2: 220 18% 94%;
+  --signal-border: 220 15% 85%;
+  --signal-text: 222 30% 15%;
+  --signal-text-dim: 220 10% 45%;
+  --signal-accent: 173 75% 38%;
+  --signal-warn: 28 90% 48%;
+}
+[data-variant="signal"][data-theme="light"] .meta-band {
+  /* keep meta-band always dark for variant identity */
+}
+
+/* COUNCIL — light "morning paper" mode */
+[data-variant="council"][data-theme="light"] {
+  --council-bg: 35 30% 92%;
+  --council-surface: 35 25% 88%;
+  --council-paper: 35 35% 98%;
+  --council-ink: 25 30% 12%;
+  --council-line: 25 15% 75%;
+  --council-gold: 35 55% 38%;
+  --council-text: 25 30% 15%;
+  --council-text-dim: 25 15% 40%;
+}
+[data-variant="council"][data-theme="light"] .council-root {
+  background: radial-gradient(ellipse at top, hsl(35 35% 96%) 0%, hsl(var(--council-bg)) 60%);
+}
+[data-variant="council"][data-theme="light"] .council-paper {
+  box-shadow: 0 12px 30px -10px hsl(25 30% 50% / 0.25), 0 4px 12px -4px hsl(25 30% 50% / 0.15);
+  border: 1px solid hsl(var(--council-line));
+}
+
+/* COUNCIL — primary CTA: dark bg + white text in light mode for contrast */
+[data-variant="council"][data-theme="light"] .council-cta {
+  background: hsl(var(--council-ink));
+  color: white;
+}
+[data-variant="council"][data-theme="light"] .council-cta:hover {
+  filter: brightness(1.15);
+}
+
+/* ATLAS — dark "night reading" mode */
+[data-variant="atlas"][data-theme="dark"] {
+  --atlas-bg: 222 25% 8%;
+  --atlas-paper: 222 22% 12%;
+  --atlas-ink: 220 15% 92%;
+  --atlas-ink-dim: 220 10% 60%;
+  --atlas-line: 222 18% 22%;
+  --atlas-accent: 199 85% 60%;
+  --atlas-success: 152 55% 50%;
+  --atlas-warn: 35 90% 60%;
+}
+[data-variant="atlas"][data-theme="dark"] .atlas-input,
+[data-variant="atlas"][data-theme="dark"] .atlas-root .atlas-input {
+  background: hsl(var(--atlas-paper));
+  color: hsl(var(--atlas-ink));
+  border-color: hsl(var(--atlas-line));
+}
+[data-variant="atlas"][data-theme="dark"] .atlas-row:hover { background: hsl(var(--atlas-paper)); }
+
+/* ============================================================
+   REPORT PAGE — variant-themed wrappers
+   ============================================================ */
+.report-root { color: hsl(var(--foreground)); background: hsl(var(--background)); }
+.report-root .report-title { font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+.report-signal { background: hsl(var(--signal-bg, 222 30% 8%)); color: hsl(var(--signal-text, 220 15% 92%)); }
+.report-council { background: hsl(var(--council-bg, 25 20% 6%)); color: hsl(var(--council-text, 35 20% 92%)); }
+.report-council .report-title { font-family: var(--council-display), Georgia, serif; }
+.report-atlas { background: hsl(var(--atlas-bg, 0 0% 100%)); color: hsl(var(--atlas-ink, 222 25% 18%)); }
